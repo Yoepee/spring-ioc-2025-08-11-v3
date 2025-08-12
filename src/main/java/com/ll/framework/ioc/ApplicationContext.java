@@ -7,9 +7,12 @@ import org.reflections.Reflections;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
+
+import static org.reflections.util.ReflectionUtilsPredicates.withAnnotation;
+import static org.reflections.util.ReflectionUtilsPredicates.withPublic;
 
 public class ApplicationContext {
     private final String basePackage;
@@ -21,28 +24,28 @@ public class ApplicationContext {
 
     public void init() {
         Reflections reflections = new Reflections(basePackage);
-        Set<Class<?>> beanTargetClasses = reflections.getTypesAnnotatedWith(Component.class);
 
-        //컴포넌트 대상 클래스들 == 빈 등록 대상 클래스들
-        for (Class<?> clazz : beanTargetClasses) {
-            if (!clazz.isAnnotation()) {
+        reflections.getTypesAnnotatedWith(Component.class)
+                   .stream()
 
-                //빈 등록
-                Object targetInstance = registerBeanFromClass(clazz);
+                   .filter(clazz -> !clazz.isAnnotation())
 
-                //대상 클래스가 설정 클래스
-                if (clazz.isAnnotationPresent(Configuration.class)) {
-                    Method[] methods = clazz.getMethods();
+                   .map(clazz -> {
+                       Object instance = registerBeanFromClass(clazz);
+                       return instance.getClass();
+                   })
 
-                    //@Bean이 선언된 메서드의 반환 타입을 빈으로 등록
-                    for (Method method : methods) {
-                        if (method.isAnnotationPresent(Bean.class)) {
-                            registerBeanFromMethod(targetInstance, method);
-                        }
-                    }
-                }
-            }
-        }
+                   .filter(clazz -> clazz.isAnnotationPresent(Configuration.class))
+
+                   .flatMap(configClass -> Arrays.stream(configClass.getMethods()))
+
+                   .filter(method -> withAnnotation(Bean.class).test(method))
+                   .filter(method -> withPublic().test(method))
+
+                   .forEach(method -> {
+                       Object config = registerBeanFromClass(method.getDeclaringClass());
+                       registerBeanFromMethod(config, method);
+                   });
     }
 
     @SuppressWarnings("unchecked")
