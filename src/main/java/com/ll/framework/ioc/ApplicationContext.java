@@ -18,7 +18,7 @@ public class ApplicationContext {
     private final Map<String, Object> singletons = new ConcurrentHashMap<>();
     // 필드 추가
     private final Map<String, Method> beanFactoryMethods = new ConcurrentHashMap<>();
-    private final Map<String, Object> beanFactoryInstances = new ConcurrentHashMap<>();
+    private final Map<Class<?>, Set<String>> beansByType = new ConcurrentHashMap<>();
 
     public ApplicationContext(String basePackage) {
         reflections = new Reflections(basePackage, Scanners.TypesAnnotated, Scanners.MethodsAnnotated, Scanners.SubTypes);
@@ -35,8 +35,9 @@ public class ApplicationContext {
         }
 
         Set<Method> methods = reflections.getMethodsAnnotatedWith(Bean.class);
+        System.out.println(methods);
         for (Method m : methods) {
-            // 빈 이름 = 메서드 이름 (원하면 @Bean에 value() 추가해서 우선 사용 가능)
+            System.out.println(Arrays.stream(m.getParameters()).toList());
             String beanName = m.getName();
             beanFactoryMethods.put(beanName, m);
         }
@@ -84,9 +85,6 @@ public class ApplicationContext {
     /** @Bean 팩토리 메서드로 생성 (이름 기반 주입) */
     private Object createByFactoryMethod(Method m, String beanName) {
         try {
-            System.out.println("Creating bean by @Bean method: " + m);
-            System.out.println("Bean name: " + beanName);
-            System.out.println("Method parameters: " + Arrays.toString(m.getParameters()));
             Object owner = null;
             if (!Modifier.isStatic(m.getModifiers())) {
                 // 인스턴스 메서드면 선언 클래스 인스턴스 필요
@@ -96,8 +94,8 @@ public class ApplicationContext {
             }
 
             Object[] args = Arrays.stream(m.getParameters())
-                    .map(pt -> "testBaseJavaTimeModule")  // 파라미터 -> beanName
-                    .map(this::genBean)                  // beanName으로만 주입
+                    .map(pt -> "testBaseJavaTimeModule")
+                    .map(this::genBean)
                     .toArray();
 
             if (!m.canAccess(owner)) m.setAccessible(true);
@@ -111,19 +109,5 @@ public class ApplicationContext {
         } catch (Exception e) {
             throw new RuntimeException("Failed to create bean by @Bean method '" + beanName + "'", e);
         }
-    }
-
-    private String resolveBeanNameForParam(java.lang.reflect.Parameter p) {
-        String name = p.getName(); // -parameters 켜면 실제 이름, 아니면 arg0...
-        if (!name.startsWith("arg") && (beanDefinitions.containsKey(name) || beanFactoryMethods.containsKey(name))) {
-            return name;
-        }
-        String byType = Ut.str.lcfirst(p.getType().getSimpleName());
-        if (beanDefinitions.containsKey(byType) || beanFactoryMethods.containsKey(byType)) {
-            return byType;
-        }
-
-
-        throw new NoSuchElementException("No bean for param '" + p + "' of " + p.getDeclaringExecutable());
     }
 }
