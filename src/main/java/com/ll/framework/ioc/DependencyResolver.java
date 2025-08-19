@@ -75,6 +75,6 @@ public class DependencyResolver {
         if (matchingNames.size() > 1) {
             throw new RuntimeException("해당 타입의 빈이 여러 개 발견되었습니다: " + requiredType.getName() + ": " + matchingNames);
         }
-        return matchingNames.iterator().next();
+        return matchingNames.stream().findFirst().orElse(null);
     }
 }
