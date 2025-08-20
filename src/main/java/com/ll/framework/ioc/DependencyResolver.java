@@ -46,10 +46,11 @@ public class DependencyResolver {
                     throw new RuntimeException("빈 클래스를 찾을 수 없습니다: " + beanName);
                 }
 
-                // 가장 많은 파라미터를 가진 생성자 선택
-                Constructor<?> constructor = Arrays.stream(beanClass.getConstructors())
-                        .max(Comparator.comparingInt(Constructor::getParameterCount))
-                        .orElseThrow(() -> new RuntimeException("생성자를 찾을 수 없습니다 " + beanClass.getName()));
+                // 사용 가능한 의존성을 기반으로 가장 적합한 생성자 선택
+                Constructor<?> constructor = resolveConstructor(beanClass);
+                if (constructor == null) {
+                    throw new RuntimeException("사용 가능한 생성자를 찾을 수 없습니다: " + beanClass.getName());
+                }
 
                 // 파라미터 의존성 주입
                 Object[] args = Arrays.stream(constructor.getParameterTypes())
@@ -76,5 +77,43 @@ public class DependencyResolver {
             throw new RuntimeException("해당 타입의 빈이 여러 개 발견되었습니다: " + requiredType.getName() + ": " + matchingNames);
         }
         return matchingNames.stream().findFirst().orElse(null);
+    }
+
+    private Constructor<?> resolveConstructor(Class<?> clazz) {
+        // 모든 public 생성자 가져오기
+        Constructor<?>[] constructors = clazz.getConstructors();
+        
+        // 생성자가 없으면 null 반환
+        if (constructors.length == 0) {
+            return null;
+        }
+
+        // 기본 생성자 확인
+        if (constructors.length == 1 && constructors[0].getParameterCount() == 0) {
+            return constructors[0];
+        }
+
+        // 모든 생성자에 대해 사용 가능한 의존성이 있는지 확인
+        for (Constructor<?> constructor : constructors) {
+            Class<?>[] paramTypes = constructor.getParameterTypes();
+            boolean allDependenciesAvailable = true;
+            
+            for (Class<?> paramType : paramTypes) {
+                try {
+                    // 의존성 확인 (예외가 발생하지 않으면 사용 가능)
+                    findBeanNameByType(paramType);
+                } catch (RuntimeException e) {
+                    allDependenciesAvailable = false;
+                    break;
+                }
+            }
+            
+            if (allDependenciesAvailable) {
+                return constructor;
+            }
+        }
+        
+        // 사용 가능한 생성자가 없으면 null 반환
+        return null;
     }
 }
