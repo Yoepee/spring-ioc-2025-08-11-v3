@@ -45,6 +45,7 @@ public class ApplicationContext {
             }
             String beanName = lcfirst(c.getSimpleName());
             beanNameToType.put(beanName, c);
+            typeToBeanName.put(c, beanName);
         }
 
         //메서드 타입
@@ -87,7 +88,7 @@ public class ApplicationContext {
             Object[] params = new Object[paramTypes.length];
 
             for (int i = 0; i < paramTypes.length; i++) {
-                String paramBeanName = lcfirst(paramTypes[i].getSimpleName());
+                String paramBeanName = typeToBeanName.get(paramTypes[i]);
                 params[i] = genBean(paramBeanName);
             }
 
