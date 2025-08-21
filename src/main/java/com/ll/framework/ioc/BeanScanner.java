@@ -4,18 +4,15 @@ import com.ll.framework.ioc.annotations.Bean;
 import com.ll.framework.ioc.annotations.Component;
 import com.ll.framework.ioc.annotations.Configuration;
 import com.ll.standard.util.Ut;
+import lombok.RequiredArgsConstructor;
 import org.reflections.Reflections;
 
 import java.util.Arrays;
 
+@RequiredArgsConstructor
 public class BeanScanner {
     private final String basePackage;
     private final BeanRegistry beanRegistry;
-
-    public BeanScanner(String basePackage, BeanRegistry beanRegistry) {
-        this.basePackage = basePackage;
-        this.beanRegistry = beanRegistry;
-    }
 
     public void scan() {
         Reflections reflections = new Reflections(basePackage);

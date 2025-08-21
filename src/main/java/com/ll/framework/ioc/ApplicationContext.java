@@ -1,15 +1,13 @@
 package com.ll.framework.ioc;
 
-public class ApplicationContext {
-    private final BeanRegistry beanRegistry;
-    private final BeanScanner beanScanner;
-    private final DependencyResolver dependencyResolver;
+import lombok.RequiredArgsConstructor;
 
-    public ApplicationContext(String basePackage) {
-        this.beanRegistry = new BeanRegistry();
-        this.beanScanner = new BeanScanner(basePackage, beanRegistry);
-        this.dependencyResolver = new DependencyResolver(beanRegistry, this);  // this로 재귀 전달
-    }
+@RequiredArgsConstructor
+public class ApplicationContext {
+    private final String basePackage;
+    private final BeanRegistry beanRegistry = new BeanRegistry();
+    private final BeanScanner beanScanner = new BeanScanner(basePackage, beanRegistry);
+    private final DependencyResolver dependencyResolver = new DependencyResolver(beanRegistry, this);
 
     public void init() {
         beanScanner.scan();
