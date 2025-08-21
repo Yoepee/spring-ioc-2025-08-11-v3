@@ -4,10 +4,14 @@ import com.ll.framework.ioc.annotations.Bean;
 import com.ll.framework.ioc.annotations.Component;
 import lombok.SneakyThrows;
 import org.reflections.Reflections;
+import org.reflections.scanners.Scanners;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
-import java.util.*;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static com.ll.standard.util.Ut.str.lcfirst;
@@ -16,19 +20,19 @@ public class ApplicationContext {
     private String basePackage;
     // beanName → class 타입
     private final Map<String, Class<?>> beanNameToType = new HashMap<>();
+    // beanName → Method 타입
+    private final Map<String, Method> beanNameToMethod = new HashMap<>();
     // class 타입 → beanName
     private final Map<Class<?>, String> typeToBeanName = new HashMap<>();
 
     private static Map<String, Object> beans = new ConcurrentHashMap<>();
-    // @Configuration 클래스들의 인스턴스 저장소
-    private final List<Object> configObjects = new ArrayList<>();
 
     public ApplicationContext(String basePackage) {
         this.basePackage = basePackage;
     }
 
     public void init() {
-        Reflections reflections = new Reflections(basePackage);
+        Reflections reflections = new Reflections(basePackage, Scanners.TypesAnnotated, Scanners.MethodsAnnotated);
 
         reflections.getTypesAnnotatedWith(Component.class)
                 .stream()
@@ -42,8 +46,9 @@ public class ApplicationContext {
         reflections.getMethodsAnnotatedWith(Bean.class)
                 .stream()
                 .forEach(m -> {
-                    Class<?> returnType = m.getReturnType();
-                    typeToBeanName.put(returnType, m.getName());
+                    String beanName = lcfirst(m.getName());
+                    beanNameToType.put(beanName, m.getReturnType());
+                    beanNameToMethod.put(beanName, m);
                 });
     }
 
@@ -57,11 +62,9 @@ public class ApplicationContext {
         if (beanNameToType.containsKey(beanName)) return (T) createClassBean(beanName);
 
         // @Bean 메서드에서 생성하는 경우
-        for (Object configObj : configObjects) {
-            if (typeToBeanName.containsValue(beanName)) return (T) createMethodBean(configObj, beanName);
-        }
+        if (beanNameToMethod.containsKey(beanName)) return (T) createMethodBean(beanName);
 
-       return null;
+        return null;
     }
 
     /**
@@ -70,42 +73,35 @@ public class ApplicationContext {
      */
     @SneakyThrows
     private Object createClassBean(String beanName) {
-            Class<?> c = beanNameToType.get(beanName);
-            Constructor<?> constructor = c.getDeclaredConstructors()[0]; // 첫 번째 생성자 사용
+        Class<?> c = beanNameToType.get(beanName);
+        Constructor<?> constructor = c.getDeclaredConstructors()[0]; // 첫 번째 생성자 사용
 
-            Object[] params = Arrays.stream(constructor.getParameterTypes())
-                    .map(clazz -> {
-                        String paramBeanName = typeToBeanName.getOrDefault(clazz, lcfirst(clazz.getSimpleName()));
-                        return genBean(paramBeanName);
-                    }).toArray();
+        Object[] params = Arrays.stream(constructor.getParameterTypes())
+                .map(clazz -> {
+                    String paramBeanName = typeToBeanName.getOrDefault(clazz, lcfirst(clazz.getSimpleName()));
+                    return genBean(paramBeanName);
+                }).toArray();
 
-            Object bean = constructor.newInstance(params); // 실제 객체 생성
-            beans.put(beanName, bean); // 싱글톤 저장
-            return bean;
+        Object bean = constructor.newInstance(params); // 실제 객체 생성
+        beans.put(beanName, bean); // 싱글톤 저장
+        return bean;
     }
 
-    /**
-     * @Bean 메서드 기반 Bean 생성
-     * - 메서드 파라미터도 자동으로 DI
-     */
     @SneakyThrows
-    private Object createMethodBean(Object configObj, String beanName) {
-        for (Method method : configObj.getClass().getDeclaredMethods()) {
-            if (!method.isAnnotationPresent(Bean.class)) continue;
-            if (!method.getName().equals(beanName)) continue;
-
-            // 메서드 파라미터 타입 확인
-            Object[] params = Arrays.stream(method.getParameterTypes())
-                    .map(clazz -> {
-                        String paramBeanName = typeToBeanName.getOrDefault(clazz, lcfirst(clazz.getSimpleName()));
-                        return genBean(paramBeanName);
-                    }).toArray();
-
-            Object bean = method.invoke(configObj, params); // 메서드 실행
-            beans.put(beanName, bean); // 싱글톤 저장
-            return bean;
+    private Object createMethodBean(String beanName) {
+        Method method = beanNameToMethod.get(beanName);
+        Object target = null;
+        if (!Modifier.isStatic(method.getModifiers())) {
+            Class<?> decl = method.getDeclaringClass();
+            target = genBean(lcfirst(decl.getSimpleName())); // ← 반드시 생성 보장
         }
 
-        throw new RuntimeException("No @Bean method found for bean: " + beanName);
+        Object[] params = Arrays.stream(method.getParameterTypes())
+                .map(pt -> genBean(lcfirst(pt.getSimpleName())))  // ← 타입 기반 주입
+                .toArray();
+
+        Object bean = method.invoke(target, params); // 메서드 실행
+        beans.put(beanName, bean); // 싱글톤 저장
+        return bean;
     }
 }
